@@ -100,8 +100,14 @@ function bucketFor(position){
   return 'FWD';
 }
 
+// A football-data.org bloqueia fetch direto do navegador (CORS), então passamos
+// por um proxy público. Isso é provisório — pra produção, o ideal é ter um
+// backend próprio (ex: Cloud Function) que esconda o token do lado do servidor.
+const CORS_PROXY = 'https://corsproxy.io/?url=';
+
 async function fdFetch(path){
-  const res = await fetch('https://api.football-data.org/v4' + path, {
+  const targetUrl = 'https://api.football-data.org/v4' + path;
+  const res = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
     headers: { 'X-Auth-Token': FOOTBALL_DATA_TOKEN }
   });
   if (res.status === 429) throw new Error('limite de chamadas da API atingido, espera um pouco');
