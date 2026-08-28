@@ -16,7 +16,7 @@ const FIREBASE_CONFIG = {
 // (variável de ambiente FOOTBALL_DATA_TOKEN na Vercel). O front-end chama a
 // function de proxy abaixo em API_BASE.
 // Preencha com a URL do seu projeto na Vercel (ex: https://futcard.vercel.app)
-const API_BASE = "COLE_AQUI_A_URL_DA_VERCEL";
+const API_BASE = "https://futcard-seven.vercel.app";
 /* ========================================================= */
 
 const COMPETITIONS = [
