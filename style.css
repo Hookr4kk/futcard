@@ -139,6 +139,18 @@
   .pull-again-row{ margin-top: 22px; }
 
   .collection-toolbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px; flex-wrap:wrap; gap:10px; }
+  .search-input{
+    flex: 1 1 100%; background: rgba(255,255,255,0.04); border:1px solid var(--line); color: var(--chalk);
+    font-family: var(--font-body); font-size: 13.5px; padding: 10px 14px; border-radius: 10px; outline:none;
+  }
+  .search-input::placeholder{ color: var(--chalk-dim); }
+  .search-input:focus{ border-color: var(--turf); }
+  .sort-row{ display:flex; align-items:center; gap:8px; flex: 1 1 100%; }
+  .sort-label{ font-family: var(--font-mono); font-size:11px; color: var(--chalk-dim); text-transform:uppercase; letter-spacing:0.6px; white-space:nowrap; }
+  .sort-select{
+    background: rgba(255,255,255,0.04); border:1px solid var(--line); color: var(--chalk);
+    font-family: var(--font-mono); font-size:11.5px; padding: 7px 10px; border-radius: 8px; outline:none; flex:1;
+  }
   .filter-row{ display:flex; gap:6px; flex-wrap:wrap; }
   .chip{ background: rgba(255,255,255,0.04); border:1px solid var(--line); color: var(--chalk-dim); font-family: var(--font-mono); font-size:11px; padding: 6px 11px; border-radius: 999px; text-transform:uppercase; letter-spacing:0.6px; }
   .chip.active{ color: var(--pitch); background: var(--turf); border-color: var(--turf); }

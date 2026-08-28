@@ -71,6 +71,8 @@ const state = {
   squad: {},
   activeTab: 'pack',
   collectionFilter: 'all',
+  collectionSearch: '',
+  collectionSort: 'recent',
   busy: false,
   ready: false,
 };
@@ -310,21 +312,71 @@ function renderReveal(pull){
 }
 
 /* ---------------- Collection tab ---------------- */
+const SORT_OPTIONS = [
+  { key:'recent', label:'Mais recentes' },
+  { key:'az', label:'Nome (A-Z)' },
+  { key:'za', label:'Nome (Z-A)' },
+  { key:'tier', label:'Raridade' },
+  { key:'competition', label:'Campeonato' },
+  { key:'team', label:'Clube (A-Z)' },
+];
+const TIER_RANK = { lendario:0, gold:1, silver:2, bronze:3 };
+
+function sortCollectionList(list, sortKey){
+  const sorted = list.slice();
+  switch(sortKey){
+    case 'az':
+      sorted.sort((a,b) => a.playerName.localeCompare(b.playerName)); break;
+    case 'za':
+      sorted.sort((a,b) => b.playerName.localeCompare(a.playerName)); break;
+    case 'tier':
+      sorted.sort((a,b) => (TIER_RANK[a.tier] ?? 9) - (TIER_RANK[b.tier] ?? 9) || a.playerName.localeCompare(b.playerName)); break;
+    case 'competition':
+      sorted.sort((a,b) => (a.competition||'').localeCompare(b.competition||'') || a.playerName.localeCompare(b.playerName)); break;
+    case 'team':
+      sorted.sort((a,b) => (a.teamName||'').localeCompare(b.teamName||'') || a.playerName.localeCompare(b.playerName)); break;
+    default: // 'recent'
+      sorted.sort((a,b) => b.pulledAt - a.pulledAt);
+  }
+  return sorted;
+}
+
 function renderCollectionTab(container){
   const filters = [
     { key:'all', label:'Todos' }, { key:'lendario', label:'Lendário' },
     { key:'gold', label:'Ouro' }, { key:'silver', label:'Prata' }, { key:'bronze', label:'Bronze' },
   ];
-  const list = state.collectionFilter === 'all' ? state.collection : state.collection.filter(p => p.tier === state.collectionFilter);
 
-  let html = '<div class="collection-toolbar"><div class="filter-row">';
+  let list = state.collectionFilter === 'all' ? state.collection : state.collection.filter(p => p.tier === state.collectionFilter);
+
+  const q = state.collectionSearch.trim().toLowerCase();
+  if(q){
+    list = list.filter(p =>
+      (p.playerName||'').toLowerCase().includes(q) ||
+      (p.teamName||'').toLowerCase().includes(q) ||
+      (p.competition||'').toLowerCase().includes(q)
+    );
+  }
+
+  list = sortCollectionList(list, state.collectionSort);
+
+  let html = '<div class="collection-toolbar">' +
+    '<input type="text" id="collectionSearchInput" class="search-input" placeholder="Buscar jogador, clube ou campeonato..." value="' + escapeHtml(state.collectionSearch) + '">' +
+    '<div class="sort-row"><label for="collectionSortSelect" class="sort-label">Ordenar por</label><select id="collectionSortSelect" class="sort-select">' +
+      SORT_OPTIONS.map(o => '<option value="' + o.key + '"' + (state.collectionSort === o.key ? ' selected' : '') + '>' + o.label + '</option>').join('') +
+    '</select></div>' +
+    '<div class="filter-row">';
   filters.forEach(f => {
     html += '<button class="chip' + (state.collectionFilter === f.key ? ' active' : '') + '" data-filter="' + f.key + '">' + f.label + '</button>';
   });
   html += '</div></div>';
 
   if(list.length === 0){
-    html += '<div class="empty-state"><span class="ball">⚽</span>Nenhuma carta ainda por aqui.<br>Vai lá na aba "Pacote" e abre a sorte.</div>';
+    html += '<div class="empty-state"><span class="ball">⚽</span>' +
+      (state.collection.length === 0
+        ? 'Nenhuma carta ainda por aqui.<br>Vai lá na aba "Pacote" e abre a sorte.'
+        : 'Nenhuma carta encontrada com esses filtros.') +
+      '</div>';
   } else {
     html += '<div class="collection-grid">';
     list.forEach(p => {
@@ -343,6 +395,24 @@ function renderCollectionTab(container){
   container.querySelectorAll('[data-filter]').forEach(btn => {
     btn.addEventListener('click', () => { state.collectionFilter = btn.dataset.filter; renderCollectionTab(container); });
   });
+
+  const searchInput = container.querySelector('#collectionSearchInput');
+  if(searchInput){
+    searchInput.addEventListener('input', () => {
+      state.collectionSearch = searchInput.value;
+      const activeEl = document.activeElement;
+      renderCollectionTab(container);
+      const newInput = container.querySelector('#collectionSearchInput');
+      if(newInput && activeEl && activeEl.id === 'collectionSearchInput'){
+        newInput.focus();
+        newInput.setSelectionRange(newInput.value.length, newInput.value.length);
+      }
+    });
+  }
+  const sortSelect = container.querySelector('#collectionSortSelect');
+  if(sortSelect){
+    sortSelect.addEventListener('change', () => { state.collectionSort = sortSelect.value; renderCollectionTab(container); });
+  }
 }
 
 /* ---------------- Squad tab ---------------- */
