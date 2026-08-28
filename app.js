@@ -441,51 +441,78 @@ function openSlotModal(slotKey){
   const slot = SLOTS_442.find(s => s.key === slotKey);
   const current = state.squad[slotKey];
   const usedIds = new Set(Object.values(state.squad).filter(Boolean).map(p => p.pullId));
-  const candidates = state.collection.filter(p => bucketFor(p.position) === slot.bucket && (!usedIds.has(p.id) || (current && current.pullId === p.id)));
+  const allCandidates = state.collection.filter(p => bucketFor(p.position) === slot.bucket && (!usedIds.has(p.id) || (current && current.pullId === p.id)));
+
+  let modalSearch = '';
 
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
-  let html = '<div class="modal">' +
-    '<div class="modal-head"><div class="modal-title">Escalar — ' + slot.label + '</div><button class="modal-close" id="modalCloseBtn">✕</button></div>';
-
-  if(candidates.length === 0){
-    html += '<div class="empty-state" style="padding:30px 10px;"><span class="ball">🎟️</span>Nenhuma carta dessa posição na sua coleção ainda.</div>';
-  } else {
-    candidates.forEach(p => {
-      html += '<div class="modal-list-item" data-pick="' + p.id + '">' +
-        (p.teamCrest ? '<img src="' + escapeHtml(p.teamCrest) + '" onerror="this.style.display=\'none\'">' : '') +
-        '<div><div class="mi-name">' + escapeHtml(p.playerName) + '</div><div class="mi-sub">' + escapeHtml(p.teamName) + ' · ' + escapeHtml(p.position) + '</div></div>' +
-        '<div class="tier-dot dot-' + p.tier + '"></div>' +
-      '</div>';
-    });
-  }
-  if(current){
-    html += '<div class="remove-row"><button class="btn btn-ghost" id="removeSlotBtn">Tirar jogador desse espaço</button></div>';
-  }
-  html += '</div>';
-  backdrop.innerHTML = html;
   document.body.appendChild(backdrop);
 
-  backdrop.querySelector('#modalCloseBtn').addEventListener('click', () => backdrop.remove());
-  backdrop.addEventListener('click', (e) => { if(e.target === backdrop) backdrop.remove(); });
-  backdrop.querySelectorAll('[data-pick]').forEach(item => {
-    item.addEventListener('click', async () => {
-      const p = state.collection.find(c => c.id === item.dataset.pick);
-      state.squad[slotKey] = { pullId: p.id, playerName: p.playerName, teamName: p.teamName, teamCrest: p.teamCrest, position: p.position, tier: p.tier };
-      await saveSquad();
-      backdrop.remove();
-      renderTabs();
+  function renderModalBody(){
+    const q = modalSearch.trim().toLowerCase();
+    const candidates = q
+      ? allCandidates.filter(p => (p.playerName||'').toLowerCase().includes(q) || (p.teamName||'').toLowerCase().includes(q))
+      : allCandidates;
+
+    let html = '<div class="modal">' +
+      '<div class="modal-head"><div class="modal-title">Escalar — ' + slot.label + '</div><button class="modal-close" id="modalCloseBtn">✕</button></div>';
+
+    if(allCandidates.length > 4){
+      html += '<input type="text" id="modalSearchInput" class="search-input" style="margin-bottom:12px;" placeholder="Buscar jogador ou clube..." value="' + escapeHtml(modalSearch) + '">';
+    }
+
+    if(allCandidates.length === 0){
+      html += '<div class="empty-state" style="padding:30px 10px;"><span class="ball">🎟️</span>Nenhuma carta dessa posição na sua coleção ainda.</div>';
+    } else if(candidates.length === 0){
+      html += '<div class="empty-state" style="padding:30px 10px;"><span class="ball">🔍</span>Nenhum jogador encontrado.</div>';
+    } else {
+      candidates.forEach(p => {
+        html += '<div class="modal-list-item" data-pick="' + p.id + '">' +
+          (p.teamCrest ? '<img src="' + escapeHtml(p.teamCrest) + '" onerror="this.style.display=\'none\'">' : '') +
+          '<div><div class="mi-name">' + escapeHtml(p.playerName) + '</div><div class="mi-sub">' + escapeHtml(p.teamName) + ' · ' + escapeHtml(p.position) + '</div></div>' +
+          '<div class="tier-dot dot-' + p.tier + '"></div>' +
+        '</div>';
+      });
+    }
+    if(current){
+      html += '<div class="remove-row"><button class="btn btn-ghost" id="removeSlotBtn">Tirar jogador desse espaço</button></div>';
+    }
+    html += '</div>';
+    backdrop.innerHTML = html;
+
+    backdrop.querySelector('#modalCloseBtn').addEventListener('click', () => backdrop.remove());
+    backdrop.querySelectorAll('[data-pick]').forEach(item => {
+      item.addEventListener('click', async () => {
+        const p = state.collection.find(c => c.id === item.dataset.pick);
+        state.squad[slotKey] = { pullId: p.id, playerName: p.playerName, teamName: p.teamName, teamCrest: p.teamCrest, position: p.position, tier: p.tier };
+        await saveSquad();
+        backdrop.remove();
+        renderTabs();
+      });
     });
-  });
-  const removeBtn = backdrop.querySelector('#removeSlotBtn');
-  if(removeBtn){
-    removeBtn.addEventListener('click', async () => {
-      delete state.squad[slotKey];
-      await saveSquad();
-      backdrop.remove();
-      renderTabs();
-    });
+    const removeBtn = backdrop.querySelector('#removeSlotBtn');
+    if(removeBtn){
+      removeBtn.addEventListener('click', async () => {
+        delete state.squad[slotKey];
+        await saveSquad();
+        backdrop.remove();
+        renderTabs();
+      });
+    }
+    const searchInput = backdrop.querySelector('#modalSearchInput');
+    if(searchInput){
+      searchInput.addEventListener('input', () => {
+        modalSearch = searchInput.value;
+        renderModalBody();
+        const newInput = backdrop.querySelector('#modalSearchInput');
+        if(newInput){ newInput.focus(); newInput.setSelectionRange(newInput.value.length, newInput.value.length); }
+      });
+    }
   }
+
+  renderModalBody();
+  backdrop.addEventListener('click', (e) => { if(e.target === backdrop) backdrop.remove(); });
 }
 
 /* ---------------- Render shell ---------------- */
