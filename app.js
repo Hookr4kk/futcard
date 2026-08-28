@@ -12,7 +12,11 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "92904162319",
   appId: "1:92904162319:web:c1edadecfb352bef348f7a"
 };
-const FOOTBALL_DATA_TOKEN = "6c34efe3f35246a09aab4c0b44d3752c";
+// O token da football-data.org NÃO fica mais aqui — ele mora só no servidor
+// (variável de ambiente FOOTBALL_DATA_TOKEN na Vercel). O front-end chama a
+// function de proxy abaixo em API_BASE.
+// Preencha com a URL do seu projeto na Vercel (ex: https://futcard.vercel.app)
+const API_BASE = "COLE_AQUI_A_URL_DA_VERCEL";
 /* ========================================================= */
 
 const COMPETITIONS = [
@@ -76,7 +80,7 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'
 function hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h*31 + s.charCodeAt(i))|0; } return Math.abs(h); }
 
 function isConfigured(){
-  return !FIREBASE_CONFIG.apiKey.includes('COLE_') && !FOOTBALL_DATA_TOKEN.includes('COLE_');
+  return !FIREBASE_CONFIG.apiKey.includes('COLE_') && !API_BASE.includes('COLE_');
 }
 
 function computeTier(name){
@@ -100,16 +104,10 @@ function bucketFor(position){
   return 'FWD';
 }
 
-// A football-data.org bloqueia fetch direto do navegador (CORS), então passamos
-// por um proxy público. Isso é provisório — pra produção, o ideal é ter um
-// backend próprio (ex: Cloud Function) que esconda o token do lado do servidor.
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
-
+// O front-end nunca fala direto com a football-data.org: ele chama a Vercel
+// Function em API_BASE, que guarda o token no servidor e repassa a chamada.
 async function fdFetch(path){
-  const targetUrl = 'https://api.football-data.org/v4' + path;
-  const res = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
-    headers: { 'X-Auth-Token': FOOTBALL_DATA_TOKEN }
-  });
+  const res = await fetch(API_BASE + '/api/football?path=' + encodeURIComponent(path));
   if (res.status === 429) throw new Error('limite de chamadas da API atingido, espera um pouco');
   if (res.status === 403) throw new Error('não disponível no plano gratuito');
   if (!res.ok) throw new Error('erro HTTP ' + res.status);
@@ -489,7 +487,7 @@ function renderConfigMissing(){
       '<div class="setup-eyebrow">Configuração pendente</div>' +
       '<h1 class="setup-title">Falta preencher <span>o token</span> no código.</h1>' +
       '<p class="setup-desc">Abra o app.js num editor de texto e preencha, lá no topo:</p>' +
-      '<div class="code-block">const FOOTBALL_DATA_TOKEN = "...seu token da football-data.org...";</div>' +
+      '<div class="code-block">const API_BASE = "...url do seu projeto na Vercel...";</div>' +
       '<p class="setup-desc" style="margin-top:16px;">Veja o passo a passo completo na mensagem do Claude.</p>' +
     '</div>';
 }
