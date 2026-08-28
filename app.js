@@ -35,6 +35,7 @@ const GOLD_SET = ['arsenal','chelsea','tottenham','atlético de madrid','atletic
 
 const TIER_LABEL = { bronze:'Bronze', silver:'Prata', gold:'Ouro', lendario:'Lendário' };
 const TIER_ORDER = ['lendario','gold','silver','bronze'];
+const TIER_COIN_VALUE = { bronze:10, silver:25, gold:75, lendario:300 };
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
 
 const FLAGS = {
@@ -69,6 +70,7 @@ const state = {
   teamPool: [],
   collection: [],
   squad: {},
+  coins: 0,
   activeTab: 'pack',
   collectionFilter: 'all',
   collectionSearch: '',
@@ -209,6 +211,17 @@ async function saveSquad(){
   await state.db.collection('squads').doc(state.user.uid).set({ slots: state.squad });
 }
 
+async function loadProfile(){
+  const doc = await state.db.collection('profiles').doc(state.user.uid).get();
+  state.coins = doc.exists ? (doc.data().coins || 0) : 0;
+}
+
+async function addCoins(amount){
+  state.coins += amount;
+  try{ await state.db.collection('profiles').doc(state.user.uid).set({ coins: state.coins }); }
+  catch(e){ /* best-effort */ }
+}
+
 /* ---------------- Auth flow ---------------- */
 async function loginWithGoogle(){
   const errEl = document.getElementById('setupError');
@@ -243,6 +256,7 @@ async function bootAfterLogin(user){
   }
   await loadCollection();
   await loadSquad();
+  await loadProfile();
   state.ready = true;
   renderMain();
 }
@@ -263,6 +277,16 @@ async function openPack(){
     const squad = teamData.squad;
     if(!squad || squad.length === 0) throw new Error('elenco vazio, tenta de novo');
     const player = squad[Math.floor(Math.random() * squad.length)];
+
+    const alreadyOwned = state.collection.some(c => c.playerId === player.id);
+
+    if(alreadyOwned){
+      const coinValue = TIER_COIN_VALUE[tier] || 10;
+      await addCoins(coinValue);
+      renderDuplicateReveal({ playerName: player.name, tier, coinValue });
+      renderTabs();
+      return;
+    }
 
     const pull = {
       playerId: player.id,
@@ -307,6 +331,21 @@ function cardHtml(p){
 function renderReveal(pull){
   const revealArea = document.getElementById('revealArea');
   revealArea.innerHTML = cardHtml(pull) +
+    '<div class="pull-again-row"><button class="btn btn-primary" id="againBtn">Abrir outro pacote</button></div>';
+  document.getElementById('againBtn').addEventListener('click', openPack);
+}
+
+function renderDuplicateReveal(info){
+  const revealArea = document.getElementById('revealArea');
+  revealArea.innerHTML = '' +
+    '<div class="dup-card tier-' + info.tier + '">' +
+      '<div class="dup-card-inner">' +
+        '<div class="dup-icon">🪙</div>' +
+        '<div class="dup-title">Já tinha esse!</div>' +
+        '<div class="dup-name">' + escapeHtml(info.playerName) + '</div>' +
+        '<div class="dup-coins">+' + info.coinValue + ' moedas</div>' +
+      '</div>' +
+    '</div>' +
     '<div class="pull-again-row"><button class="btn btn-primary" id="againBtn">Abrir outro pacote</button></div>';
   document.getElementById('againBtn').addEventListener('click', openPack);
 }
@@ -534,6 +573,8 @@ function renderTabs(){
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === state.activeTab));
   const countEl = document.getElementById('collectionCount');
   if(countEl) countEl.textContent = state.collection.length;
+  const coinsEl = document.querySelector('.coins-tag');
+  if(coinsEl) coinsEl.textContent = '🪙 ' + state.coins;
 }
 
 function renderMain(){
@@ -542,7 +583,7 @@ function renderMain(){
   app.innerHTML = '' +
     '<div class="brandbar">' +
       '<div class="brand"><div class="brand-badge">FC</div><div class="brand-name">FUT<span>CARD</span></div></div>' +
-      '<div class="user-tag">' + (u.photoURL ? '<img src="' + escapeHtml(u.photoURL) + '">' : '') + '<span>' + escapeHtml(u.displayName || u.email || 'Treinador') + '</span><button class="logout-btn" id="logoutBtn">Sair</button></div>' +
+      '<div class="user-tag">' + (u.photoURL ? '<img src="' + escapeHtml(u.photoURL) + '">' : '') + '<span>' + escapeHtml(u.displayName || u.email || 'Treinador') + '</span><span class="coins-tag">🪙 ' + state.coins + '</span><button class="logout-btn" id="logoutBtn">Sair</button></div>' +
     '</div>' +
     '<div class="tabs">' +
       '<button class="tab" data-tab="pack">Pacote</button>' +
