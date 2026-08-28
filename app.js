@@ -212,8 +212,12 @@ async function saveSquad(){
 }
 
 async function loadProfile(){
-  const doc = await state.db.collection('profiles').doc(state.user.uid).get();
-  state.coins = doc.exists ? (doc.data().coins || 0) : 0;
+  try{
+    const doc = await state.db.collection('profiles').doc(state.user.uid).get();
+    state.coins = doc.exists ? (doc.data().coins || 0) : 0;
+  }catch(e){
+    state.coins = 0; // sem permissão ainda pra 'profiles' — segue sem travar o app
+  }
 }
 
 async function addCoins(amount){
