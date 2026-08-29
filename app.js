@@ -30,8 +30,23 @@ const COMPETITIONS = [
   { code:'PPL', name:'Primeira Liga' },
 ];
 
-const LENDARIO_SET = ['real madrid','barcelona','manchester city','manchester united','manchester utd','liverpool','bayern','paris saint-germain','psg','juventus'];
-const GOLD_SET = ['arsenal','chelsea','tottenham','atlético de madrid','atletico madrid','atlético madrid','borussia dortmund','internazionale','inter milan','ac milan',' milan','napoli','marseille','ajax','porto','benfica','sporting cp','flamengo','palmeiras','corinthians','são paulo','sao paulo','sevilla','roma','lazio','newcastle','west ham','villarreal','bayer leverkusen','rb leipzig','monaco','olympique lyonnais','lyon'];
+// Raridade agora é do JOGADOR, não do clube. Times grandes não puxam mais
+// automaticamente cartas melhores — um reserva do Real Madrid pode sair
+// bronze, e uma estrela de um clube pequeno pode sair lendário.
+const LENDARIO_PLAYERS = [
+  'mbappé','mbappe','haaland','vinícius júnior','vinicius júnior','vinicius jr','vinícius jr','bellingham',
+  'lionel messi','messi','neymar','lewandowski','kevin de bruyne','de bruyne','mohamed salah',' salah',
+  'harry kane','rodri','pedri','jamal musiala','musiala',
+];
+const GOLD_PLAYERS = [
+  'bukayo saka',' saka','martin ødegaard','ødegaard','odegaard','declan rice',' rice','cole palmer',' palmer',
+  'son heung-min','heung-min son','virgil van dijk','van dijk','phil foden',' foden','florian wirtz','wirtz',
+  'victor osimhen','osimhen','rafael leão','rafael leao',' leão','khvicha kvaratskhelia','kvaratskhelia',
+  'ousmane dembélé','ousmane dembele','dembélé','dembele','julián álvarez','julian alvarez',' álvarez',' alvarez',
+  'antoine griezmann','griezmann','thibaut courtois','courtois','alisson becker','alisson','rodrygo','raphinha',
+  'casemiro','lautaro martínez','lautaro','marcus rashford','rashford','gabriel jesus','richarlison',
+  'endrick','vinícius','vinicius',
+];
 
 const TIER_LABEL = { bronze:'Bronze', silver:'Prata', gold:'Ouro', lendario:'Lendário' };
 const TIER_ORDER = ['lendario','gold','silver','bronze'];
@@ -85,11 +100,11 @@ function isConfigured(){
   return !FIREBASE_CONFIG.apiKey.includes('COLE_') && !API_BASE.includes('COLE_');
 }
 
-function computeTier(name){
-  const n = name.toLowerCase();
-  if (LENDARIO_SET.some(k => n.includes(k))) return 'lendario';
-  if (GOLD_SET.some(k => n.includes(k))) return 'gold';
-  return (hashStr(name) % 10 < 4) ? 'silver' : 'bronze';
+function computePlayerTier(playerName){
+  const n = ' ' + playerName.toLowerCase() + ' ';
+  if (LENDARIO_PLAYERS.some(k => n.includes(k))) return 'lendario';
+  if (GOLD_PLAYERS.some(k => n.includes(k))) return 'gold';
+  return (hashStr(playerName) % 10 < 4) ? 'silver' : 'bronze';
 }
 
 function flagFor(nationality){
@@ -122,7 +137,7 @@ async function buildTeamPoolFromApi(log){
     try{
       const data = await fdFetch('/competitions/' + comp.code + '/teams');
       const teams = (data.teams || []).map(t => ({
-        id: t.id, name: t.name, crest: t.crest || '', competition: comp.name, tier: computeTier(t.name)
+        id: t.id, name: t.name, crest: t.crest || '', competition: comp.name
       }));
       pool = pool.concat(teams);
       log('✓ ' + comp.name + ': ' + teams.length + ' times');
@@ -181,18 +196,8 @@ function rollTier(){
   return 'bronze';
 }
 
-function pickTierWithFallback(){
-  let idx = TIER_ORDER.indexOf(rollTier());
-  while(idx < TIER_ORDER.length){
-    if (state.teamPool.some(t => t.tier === TIER_ORDER[idx])) return TIER_ORDER[idx];
-    idx++;
-  }
-  return 'bronze';
-}
-
-function pickRandomFromTier(tier, excludeIds){
-  let pool = state.teamPool.filter(t => t.tier === tier);
-  return pool[Math.floor(Math.random() * pool.length)];
+function pickRandomTeam(){
+  return state.teamPool[Math.floor(Math.random() * state.teamPool.length)];
 }
 
 async function loadCollection(){
@@ -258,23 +263,41 @@ async function openPack(){
 
   try{
     const ownedIds = new Set(state.collection.map(c => c.playerId));
-    let tier, team, teamData, player, attempts = 0;
+    const targetTier = rollTier();
+    let team, teamData, player, playerTier, attempts = 0;
+    let fbTeam=null, fbTeamData=null, fbPlayer=null, fbTier=null;
 
-    // Tenta achar um jogador que você ainda não tem. Se depois de várias
-    // tentativas só sobrar gente repetida (coleção quase completa), deixa
-    // repetir mesmo pra não travar o pacote pra sempre.
+    // O time é sorteado sem olhar prestígio do clube — a raridade agora vem
+    // do jogador. Tenta achar, entre vários clubes aleatórios, algum jogador
+    // (que você ainda não tem) cujo tier individual bata com o sorteado. Se
+    // não achar em 15 tentativas, usa o primeiro jogador válido encontrado
+    // (com o tier dele mesmo) pra não travar o pacote.
     do {
-      tier = pickTierWithFallback();
-      team = pickRandomFromTier(tier);
+      team = pickRandomTeam();
       teamData = await getTeamSquad(team, ()=>{});
       const squad = teamData.squad;
-      if(!squad || squad.length === 0){ player = null; continue; }
+      attempts++;
+      if(!squad || squad.length === 0) continue;
+
       const notOwned = squad.filter(p => !ownedIds.has(p.id));
       const pickFrom = notOwned.length > 0 ? notOwned : squad;
-      player = pickFrom[Math.floor(Math.random() * pickFrom.length)];
-      attempts++;
-    } while((!player || ownedIds.has(player.id)) && attempts < 15);
 
+      if(!fbPlayer){
+        fbPlayer = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+        fbTeam = team; fbTeamData = teamData;
+        fbTier = computePlayerTier(fbPlayer.name);
+      }
+
+      const matches = pickFrom.filter(p => computePlayerTier(p.name) === targetTier);
+      if(matches.length > 0){
+        player = matches[Math.floor(Math.random() * matches.length)];
+        playerTier = targetTier;
+      }
+    } while(!player && attempts < 15);
+
+    if(!player){
+      player = fbPlayer; team = fbTeam; teamData = fbTeamData; playerTier = fbTier;
+    }
     if(!player) throw new Error('elenco vazio, tenta de novo');
 
     const pull = {
@@ -286,7 +309,7 @@ async function openPack(){
       teamName: team.name,
       teamCrest: teamData.crest || team.crest || '',
       competition: team.competition,
-      tier: tier,
+      tier: playerTier,
       owner: state.user.uid,
       pulledAt: Date.now(),
     };
@@ -563,7 +586,7 @@ function renderMain(){
       '<button class="tab" data-tab="squad">Escalação</button>' +
     '</div>' +
     '<div id="tabContent"></div>' +
-    '<div class="footer-note">Dados de jogadores e clubes via football-data.org · Progresso salvo na sua conta Google · Raridade baseada no prestígio do clube (heurística simples, edite o código pra ajustar)</div>';
+    '<div class="footer-note">Dados de jogadores e clubes via football-data.org · Progresso salvo na sua conta Google · Raridade baseada no jogador em si, não no clube (heurística simples, edite as listas LENDARIO_PLAYERS/GOLD_PLAYERS pra ajustar)</div>';
 
   document.querySelectorAll('.tab').forEach(t => {
     t.addEventListener('click', () => { state.activeTab = t.dataset.tab; renderTabs(); });
@@ -581,7 +604,7 @@ function renderLogin(){
     '<div class="setup-card">' +
       '<div class="setup-eyebrow">Gacha de futebol</div>' +
       '<h1 class="setup-title">Abre o pacote, monta o <span>time</span>.</h1>' +
-      '<p class="setup-desc">Cada pacote sorteia um clube (times grandes são mais raros) e depois um jogador aleatório do elenco dele, puxado ao vivo da football-data.org. Entra com sua conta Google pra guardar sua coleção e sua escalação.</p>' +
+      '<p class="setup-desc">Cada pacote sorteia um jogador aleatório de qualquer clube — a raridade (bronze/prata/ouro/lendário) vem do jogador em si, não do time dele — puxado ao vivo da football-data.org. Entra com sua conta Google pra guardar sua coleção e sua escalação.</p>' +
       '<button class="btn btn-google" id="googleBtn"><svg class="g-icon" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.9 32.3 29.4 35.5 24 35.5c-6.4 0-11.5-5.1-11.5-11.5S17.6 12.5 24 12.5c2.9 0 5.6 1.1 7.6 2.9l6-6C34.3 6 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.6 18.9 12.5 24 12.5c2.9 0 5.6 1.1 7.6 2.9l6-6C34.3 6 29.4 4 24 4c-7.7 0-14.4 4.4-17.7 10.7z"/><path fill="#4CAF50" d="M24 44c5.3 0 10.1-2 13.7-5.4l-6.3-5.3C29.4 35 26.9 35.5 24 35.5c-5.3 0-9.8-3.2-11.4-7.7l-6.5 5C9.5 39.5 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.7 2-2 3.7-3.7 4.9l6.3 5.3C41.4 35.9 44 30.3 44 24c0-1.2-.1-2.4-.4-3.5z"/></svg>Entrar com Google</button>' +
       '<div class="setup-error" id="setupError"></div>' +
     '</div>' +
